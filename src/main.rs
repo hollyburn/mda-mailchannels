@@ -9,8 +9,6 @@ use quick_error::quick_error;
 use serde_with::base64::Base64;
 use serde_with::{serde_as, skip_serializing_none};
 
-use rsa::pkcs8::{DecodePrivateKey, EncodePrivateKey};
-
 const fn api_key() -> &'static str {
     return env!("MDA_MAILCHANNELS_API_KEY");
 }
@@ -83,8 +81,7 @@ struct Content {
 #[derive(serde::Serialize)]
 struct DkimInfo {
     dkim_domain: String,
-    #[serde_as(as = "Base64")]
-    dkim_private_key: Vec<u8>,
+    dkim_private_key: String,
     dkim_selector: String,
 }
 
@@ -142,7 +139,6 @@ quick_error! {
         NoSenderDomain(err: &'static str, email: String)
         NoDkimForDomain(err: &'static str, email: String)
         DkimKeyDecodeFailed(err: &'static str, filename: String)
-        Pkcs8(err: rsa::pkcs8::Error) { from() }
         TooManyHeaders(err: &'static str)
         MissingHeader(err: &'static str)
         API(err: u16, text: String)
@@ -286,19 +282,33 @@ async fn main() -> Result<(), MainError> {
     let dkim = DkimInfo {
         dkim_domain: sender_domain.clone(),
         dkim_private_key: {
-            let pem_file_metadata = std::fs::metadata(&keyfilename)?;
-            let mut pem_file_contents = String::with_capacity(pem_file_metadata.len() as usize);
-            std::fs::File::open(&keyfilename)?.read_to_string(&mut pem_file_contents)?;
-            let private_key = match rsa::RsaPrivateKey::from_pkcs8_pem(&pem_file_contents[..]) {
-                Ok(tuple) => tuple,
-                Err(_) => {
-                    return Err(MainError::DkimKeyDecodeFailed(
-                        "failed to parse the PEM file",
-                        keyfilename.to_string_lossy().into_owned(),
-                    ));
-                }
-            };
-            Vec::from(private_key.to_pkcs8_der()?.as_bytes())
+            let mut pem_file = std::fs::File::open(&keyfilename)?;
+            let pem_file_metadata = pem_file.metadata()?;
+            let pem_file_len = pem_file_metadata.len() as usize;
+            let mut pem_file_contents = String::with_capacity(pem_file_len);
+            pem_file.read_to_string(&mut pem_file_contents)?;
+
+            const HEADER: &str = "-----BEGIN PRIVATE KEY-----\n";
+            const FOOTER: &str = "-----END PRIVATE KEY-----\n";
+            if !pem_file_contents.starts_with(HEADER) {
+                return Err(MainError::DkimKeyDecodeFailed(
+                    "dkim key file missing or incorrect pem header",
+                    keyfilename.to_string_lossy().into_owned(),
+                ));
+            }
+            if !pem_file_contents.ends_with(FOOTER) {
+                return Err(MainError::DkimKeyDecodeFailed(
+                    "dkim key file missing or incorrect pem footer",
+                    keyfilename.to_string_lossy().into_owned(),
+                ));
+            }
+
+            let private_key = pem_file_contents
+                .chars()
+                .skip(HEADER.len())
+                .take(pem_file_len - HEADER.len() - FOOTER.len())
+                .filter(|c| *c != '\n' && *c != '\r');
+            private_key.collect::<String>()
         },
         dkim_selector: String::from(dkim_selector()),
     };
