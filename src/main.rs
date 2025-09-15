@@ -10,11 +10,11 @@ use serde_with::base64::Base64;
 use serde_with::{serde_as, skip_serializing_none};
 
 const fn api_key() -> &'static str {
-    return env!("MDA_MAILCHANNELS_API_KEY");
+    env!("MDA_MAILCHANNELS_API_KEY")
 }
 
 const fn dkim_selector() -> &'static str {
-    return env!("MDA_MAILCHANNELS_DKIM_SELECTOR");
+    env!("MDA_MAILCHANNELS_DKIM_SELECTOR")
 }
 
 mod headers {
@@ -151,9 +151,8 @@ fn stringify_content_type(ct: &mail_parser::ContentType) -> String {
     let mut ctlen = ctype.len();
 
     let subtype = ct.subtype();
-    if subtype.is_some() {
-        ctlen += 1;
-        ctlen += subtype.unwrap().len();
+    if let Some(subtype_inner) = subtype {
+        ctlen += 1 + subtype_inner.len();
     }
 
     let mut content_type = String::with_capacity(ctlen);
