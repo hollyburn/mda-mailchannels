@@ -1,9 +1,9 @@
 use std::io::BufRead;
 
 fn main() {
+    println!("cargo::rerun-if-changed=.build_env");
     const ENV_NAME: &str = ".build_env";
-    if std::fs::exists(ENV_NAME).unwrap() {
-        let f = std::fs::File::open(ENV_NAME).unwrap();
+    if let Ok(f) = std::fs::File::open(ENV_NAME) {
         let bf = std::io::BufReader::new(f);
         for line in bf.lines() {
             let line = line.unwrap();
