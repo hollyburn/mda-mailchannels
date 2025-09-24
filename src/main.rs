@@ -151,8 +151,8 @@ fn stringify_content_type(ct: &mail_parser::ContentType) -> String {
     let mut ctlen = ctype.len();
 
     let subtype = ct.subtype();
-    if let Some(subtype_inner) = subtype {
-        ctlen += 1 + subtype_inner.len();
+    if let Some(inner_subtype) = subtype {
+        ctlen += 1 + inner_subtype.len();
     }
 
     let mut content_type = String::with_capacity(ctlen);
